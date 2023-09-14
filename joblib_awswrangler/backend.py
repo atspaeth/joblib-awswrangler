@@ -1,7 +1,7 @@
 import glob
 import boto3
 import awswrangler as wr
-import smart_open
+from smart_open.s3 import parse_uri, open_uri
 from joblib import register_store_backend
 from joblib._store_backends import StoreBackendBase, StoreBackendMixin, CacheItemInfo
 
@@ -10,12 +10,12 @@ class S3StoreBackend(StoreBackendBase, StoreBackendMixin):
     _item_exists = staticmethod(wr.s3.does_object_exist)
 
     def _open_item(self, location, mode):
-        return smart_open.open(location, mode, transport_params=self.transport_params)
+        return open_uri(location, mode, dict(client=self.client))
 
-    def _move_item(self, src, dst):
+    def _move_item(self, src_uri, dst_uri):
         # awswrangler only includes a fancy move/rename method that actually
         # makes it pretty hard to just do a simple move.
-        src, dst = [smart_open.s3.parse_uri(x) for x in (src, dst)]
+        src, dst = [parse_uri(x) for x in (src_uri, dst_uri)]
         self.client.copy_object(
             Bucket=dst["bucket_id"],
             Key=dst["key_id"],
@@ -59,13 +59,10 @@ class S3StoreBackend(StoreBackendBase, StoreBackendMixin):
         # permission to write files to it, but for the POC I'm lazy.
         self.location = location
 
-        # Get transport params for smart_open out of awswrangler, assuming that
-        # awswrangler has been configured by the user.
+        # Also create a boto3 client that gets its configuration from awswrangler.
         self.client = boto3.Session().client(
             "s3", endpoint_url=wr.config.s3_endpoint_url
         )
-
-        self.transport_params = dict(client=self.client)
 
 
 def install():
